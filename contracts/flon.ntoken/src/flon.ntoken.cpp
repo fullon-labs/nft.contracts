@@ -24,7 +24,7 @@ void ntoken::create( const name& issuer, const int64_t& maximum_supply, const ns
    check( idx.find(token_uri_hash) == idx.end(), "token with token_uri already exists" );
    check( nstats.find(nsymb.id) == nstats.end(), "token of ID: " + to_string(nsymb.id) + " alreay exists" );
    if (nsymb.id != 0)
-      check( nsymb.id != nsymb.parent_id, "parent id shall not be equal to id" );
+      check( nsymb.id != nsymb.pid, "parent id shall not be equal to id" );
    else
       nsymb.id         = nstats.available_primary_key();
 
@@ -85,29 +85,10 @@ void ntoken::notarize(const name& notary, const uint32_t& token_id) {
     });
 }
 
-void ntoken::approve( const name& owner, const name& spender, const uint32_t& token_pid, const uint64_t& amount ){
-   require_auth( owner );
-
-   allowance_t::idx_t allow( _self, owner.value);
-   auto itr = allow.find( owner.value );
-
-   if( itr == allow.end() ) {
-      allow.emplace( owner, [&](auto& row) {
-          row.spender = spender;
-          row.allowances[ token_pid ] = amount;
-      });
-
-   } else {
-       allow.modify( itr, same_payer, [&](auto& row){
-          row.allowances[ token_pid ] = amount;
-      });
-   }
-}
-
 void ntoken::issue( const name& to, const nasset& quantity, const string& memo )
 {
     auto sym = quantity.symbol;
-    check( sym.is_valid(), "invalid symbol name" );
+   //  check( sym.is_valid(), "invalid symbol name" );
     check( memo.size() <= 256, "memo has more than 256 bytes" );
 
     auto nstats = nstats_t::idx_t( _self, _self.value );
@@ -117,7 +98,7 @@ void ntoken::issue( const name& to, const nasset& quantity, const string& memo )
     check( to == st.issuer, "tokens can only be issued to issuer account" );
 
     require_auth( st.issuer );
-    check( quantity.is_valid(), "invalid quantity" );
+   //  check( quantity.is_valid(), "invalid quantity" );
     check( quantity.amount > 0, "must issue positive quantity" );
 
     check( quantity.symbol == st.supply.symbol, "symbol mismatch" );
@@ -134,7 +115,7 @@ void ntoken::issue( const name& to, const nasset& quantity, const string& memo )
 void ntoken::retire( const nasset& quantity, const string& memo )
 {
     auto sym = quantity.symbol;
-    check( sym.is_valid(), "invalid symbol name" );
+   //  check( sym.is_valid(), "invalid symbol name" );
     check( memo.size() <= 256, "memo has more than 256 bytes" );
 
     auto nstats = nstats_t::idx_t( _self, _self.value );
@@ -143,7 +124,7 @@ void ntoken::retire( const nasset& quantity, const string& memo )
     const auto& st = *existing;
 
     require_auth( st.issuer );
-    check( quantity.is_valid(), "invalid quantity" );
+   //  check( quantity.is_valid(), "invalid quantity" );
     check( quantity.amount > 0, "must retire positive quantity" );
 
     check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
@@ -171,8 +152,7 @@ void ntoken::transfer( const name& from, const name& to, const vector<nasset>& a
       auto nstats = nstats_t::idx_t( _self, _self.value );
       const auto& st = nstats.get( sym.id );
 
-
-      check( quantity.is_valid(), "invalid quantity" );
+      // check( quantity.is_valid(), "invalid quantity" );
       check( quantity.amount > 0, "must transfer positive quantity" );
       check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
 
@@ -182,42 +162,6 @@ void ntoken::transfer( const name& from, const name& to, const vector<nasset>& a
 
 }
 
-
-void ntoken::transferfrom( const name& owner, const name& from, const name& to, const vector<nasset>& assets, const string& memo  )
-{
-   check( from != to, "cannot transfer to self" );
-   require_auth( owner );
-   check( is_account( to ), "to account does not exist");
-   check( memo.size() <= 256, "memo has more than 256 bytes" );
-   auto payer = owner;
-
-   allowance_t::idx_t allowances( _self, owner.value);
-   auto itr = allowances.find(from.value);
-   check( itr != allowances.end(), "Unauthorized");
-
-   require_recipient( owner );
-   require_recipient( from );
-   require_recipient( to );
-
-   for( auto& nft : assets) {
-      auto nstats = nstats_t::idx_t( _self, _self.value );
-      const auto& st = nstats.get( nft.symbol.id );
-      
-      check( nft.is_valid(), "invalid nft" );
-      check( nft.amount > 0, "must transfer positive nft amount" );
-      check( nft.symbol == st.supply.symbol, "NFT symbol mismatch" );
-      check( itr->allowances.count(nft.symbol.parent_id), "Unauthorized NFT PID:" + to_string(nft.symbol.parent_id) );
-      check( itr->allowances.at(nft.symbol.parent_id) >= nft.amount, "Overdrawn nfts" );
-
-      allowances.modify( itr,same_payer, [&](auto& row){
-         row.allowances[nft.symbol.parent_id] -= nft.amount;
-      });
-
-      sub_balance( from, nft );
-      add_balance( to, nft, payer );
-    }
-
-}
 
 void ntoken::sub_balance( const name& owner, const nasset& value ) {
    auto from_acnts = account_t::idx_t( get_self(), owner.value );
@@ -251,82 +195,30 @@ void ntoken::setcreator( const name& creator, const bool& to_add){
    check( is_account( creator ), "creator does not exist");
 
    if ( to_add ){
-
-      auto creators = creator_whitelist_t::idx_t( get_self(), get_self().value );
-      auto find_itr = creators.find( creator.value );
-      check( find_itr == creators.end(),"Creator already existing" );
-      creators.emplace( _self, [&]( auto& s ) {
-         s.creator = creator;
-      });
+      _gstate.creators.insert( creator );
 
    } else {
-
-      auto creators = creator_whitelist_t::idx_t( get_self(), get_self().value );
-      auto find_itr = creators.find( creator.value );
-      check( find_itr != creators.end(),"Creator not found" );
-      creators.erase(find_itr);
+      check( _gstate.creators.find( creator ) != _gstate.creators.end(), "creator not found:" + creator.to_string() );
+      _gstate.creators.erase( creator );
    }
 }
 
-void ntoken::setcheck( const bool& check_creator){
-
-   require_auth( _self );
-
-   _gstate1.check_creator = check_creator;
-}
-
 void ntoken::_creator_auth_check( const name& creator){
-
-      if ( !_gstate1.check_creator )
+      if ( _gstate.creators.size() == 0 )
          return;
 
-      auto did_acnts = account_t::idx_t( DID_CONTRACTT, creator.value );
+      auto found = _gstate.creators.find(creator) != _gstate.creators.end();
+      check( found, "creator not authorized: " + creator.to_string() );  
 
-      bool is_auth = false;
-      for( auto did_acnts_iter = did_acnts.begin(); did_acnts_iter!=did_acnts.end(); did_acnts_iter++ ) {
+      auto is_auth = false;
+      auto did_acnts = account_t::idx_t( DID_CONTRACT, creator.value );
+      for( auto did_acnts_iter = did_acnts.begin(); did_acnts_iter != did_acnts.end(); did_acnts_iter++ ) {
          if( did_acnts_iter->balance.amount > 0 ) {
                is_auth = true;
                break;
          }
       }
-
-      if ( !is_auth ){
-         auto creators = creator_whitelist_t::idx_t( get_self(), get_self().value );
-         auto find_itr = creators.find( creator.value );
-         is_auth = find_itr != creators.end();
-      }
-
-      check( is_auth,"did is not authenticated" );   
+      check( is_auth, "creator has no DID: " + creator.to_string() );   
 }
-
-// void ntoken::open( const name& owner, const symbol& symbol, const name& ram_payer )
-// {
-//    require_auth( ram_payer );
-
-//    check( is_account( owner ), "owner account does not exist" );
-
-//    auto sym_code_raw = symbol.code().raw();
-//    stats statstable( get_self(), sym_code_raw );
-//    const auto& st = statstable.get( sym_code_raw, "symbol does not exist" );
-//    check( st.supply.symbol == symbol, "symbol precision mismatch" );
-
-//    accounts acnts( get_self(), owner.value );
-//    auto it = acnts.find( sym_code_raw );
-//    if( it == acnts.end() ) {
-//       acnts.emplace( ram_payer, [&]( auto& a ){
-//         a.balance = asset{0, symbol};
-//       });
-//    }
-// }
-
-// void ntoken::close( const name& owner, const symbol& symbol )
-// {
-//    require_auth( owner );
-//    accounts acnts( get_self(), owner.value );
-//    auto it = acnts.find( symbol.code().raw() );
-//    check( it != acnts.end(), "Balance row already deleted or never existed. Action won't have any effect." );
-//    check( it->balance.amount == 0, "Cannot close because the balance is not zero." );
-//    acnts.erase( it );
-// }
 
 } //namespace flon

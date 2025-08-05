@@ -191,7 +191,7 @@ void didtoken::transfer( const name& from, const name& to, const vector<nasset>&
    require_recipient( from );
    require_recipient( to );
 
-   check (assets.size() == 1, "assets size must 1");
+   check (assets.size() == 1, "assets size must equal 1");
    for( auto& quantity : assets) {
       auto sym = quantity.symbol;
       auto nstats = nstats_t::idx_t( _self, _self.value );

@@ -16,7 +16,7 @@ using std::vector;
 using namespace eosio;
 
 static constexpr uint8_t MAX_BALANCE_COUNT = 30;
-static constexpr name DID_CONTRACTT = "did.ntoken"_n;
+static constexpr name DID_CONTRACT = "did.ntoken"_n;
 static constexpr uint32_t DID_SYMBOL_ID = 1000001;
 
 /**
@@ -33,16 +33,13 @@ class [[eosio::contract("flon.ntoken")]] ntoken : public contract {
       using contract::contract;
 
    ntoken(eosio::name receiver, eosio::name code, datastream<const char*> ds): contract(receiver, code, ds),
-        _global(get_self(), get_self().value),
-        _global1(get_self(), get_self().value)
+        _global(get_self(), get_self().value)
     {
         _gstate = _global.exists() ? _global.get() : global_t{};
-        _gstate1 = _global1.exists() ? _global1.get() : global1_t{};
     }
 
     ~ntoken() { 
       _global.set( _gstate, get_self() ); 
-      _global1.set( _gstate1, get_self() ); 
    }
 
    /**
@@ -80,8 +77,6 @@ class [[eosio::contract("flon.ntoken")]] ntoken : public contract {
    ACTION transfer( const name& from, const name& to, const vector<nasset>& assets, const string& memo );
    using transfer_action = action_wrapper< "transfer"_n, &ntoken::transfer >;
 
-   ACTION transferfrom( const name& owner, const name& from, const name& to, const vector<nasset>& assets, const string& memo );
-   using transfer_from_action = action_wrapper< "transferfrom"_n, &ntoken::transferfrom >;
    /**
     * @brief fragment a NFT into multiple common or unique NFT pieces
     *
@@ -102,24 +97,21 @@ class [[eosio::contract("flon.ntoken")]] ntoken : public contract {
     * @return ACTION
     */
    ACTION notarize(const name& notary, const uint32_t& token_id);
-   ACTION approve( const name& spender, const name& sender, const uint32_t& token_pid, const uint64_t& amount );
    ACTION setcreator( const name& creator, const bool& to_add);
 
-   ACTION setcheck( const bool& check_creator);
-   
    static nasset get_balance(const name& contract, const name& owner, const nsymbol& sym) { 
       auto acnts = flon::account_t::idx_t( contract, owner.value ); 
       const auto& acnt = acnts.get( sym.raw(), "no balance object found" ); 
       return acnt.paused? 0 : acnt.balance; 
    } 
  
-   static uint64_t get_balance_by_parent( const name& contract, const name& owner, const uint32_t& parent_id ) { 
+   static uint64_t get_balance_by_parent( const name& contract, const name& owner, const uint32_t& pid ) { 
       auto ntable = flon::nstats_t::idx_t( contract, owner.value ); 
       auto idx = ntable.get_index<"parentidx"_n>(); 
-      uint64_t id_lowest = (uint64_t)parent_id << 32; 
+      uint64_t id_lowest = (uint64_t)pid * 1E10; 
       auto itr = ntable.lower_bound( id_lowest ); 
       uint64_t amount = 0; 
-      for (uint8_t i = 0; itr != ntable.end() && itr->supply.symbol.parent_id == parent_id; itr++, i++) { 
+      for (uint8_t i = 0; itr != ntable.end() && itr->supply.symbol.pid == pid; itr++, i++) { 
          if(i == MAX_BALANCE_COUNT) break; 
          auto acnts = flon::account_t::idx_t( contract, owner.value ); 
          auto sym = itr->supply.symbol; 
@@ -134,10 +126,9 @@ class [[eosio::contract("flon.ntoken")]] ntoken : public contract {
       void add_balance( const name& owner, const nasset& value, const name& ram_payer );
       void sub_balance( const name& owner, const nasset& value );
       void _creator_auth_check( const name& creator);
+
    private:
       global_singleton     _global;
-      global1_singleton    _global1;
       global_t             _gstate;
-      global1_t            _gstate1;
 };
 } //namespace flon
